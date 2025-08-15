@@ -1,155 +1,283 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>80th Anniversary Indonesia Independence</title>
-<style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-    background: black;
-  }
-  #container {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-  video, canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  /* Frame border animation */
-  #frame {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    border: 20px solid;
-    border-image: linear-gradient(90deg, red, white, red) 1;
-    animation: borderShift 6s linear infinite;
-    pointer-events: none;
-  }
-  @keyframes borderShift {
-    0% { border-image-source: linear-gradient(90deg, red, white, red); }
-    50% { border-image-source: linear-gradient(270deg, red, white, red); }
-    100% { border-image-source: linear-gradient(90deg, red, white, red); }
-  }
-  /* Top text with shine */
-  #title {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 2.2vw;
-    color: white;
-    font-weight: bold;
-    text-align: center;
-    white-space: nowrap;
-    pointer-events: none;
-    background: linear-gradient(90deg, white, #ffcccc, white);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-size: 200% auto;
-    animation: shine 6s linear infinite;
-  }
-  @keyframes shine {
-    0% { background-position: -200% center; }
-    100% { background-position: 200% center; }
-  }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>80th Anniversary Indonesia Independence, Camera App</title>
+
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* layers, z order, video 0, draw 1, frame 2 */
+    #cam {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 0;
+      background: #000;
+    }
+    #draw {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* animated marching border, built from four bars so the center stays transparent */
+    .frame {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .bar { position: absolute; background-size: 40px 40px; }
+    .bar.top,
+    .bar.bottom {
+      left: 0;
+      width: 100%;
+      height: 56px;            /* thick frame */
+      background-image: repeating-linear-gradient(
+        90deg,
+        #e60000 0 20px,
+        #ffffff 20px 40px
+      );
+      animation: marchX 8s linear infinite;
+    }
+    .bar.left,
+    .bar.right {
+      top: 0;
+      height: 100%;
+      width: 56px;
+      background-image: repeating-linear-gradient(
+        0deg,
+        #e60000 0 20px,
+        #ffffff 20px 40px
+      );
+      animation: marchY 8s linear infinite;
+    }
+    .bar.top { top: 0; }
+    .bar.bottom { bottom: 0; }
+    .bar.left { left: 0; }
+    .bar.right { right: 0; }
+
+    @keyframes marchX {
+      0% { background-position: 0 0; }
+      100% { background-position: -40px 0; }
+    }
+    @keyframes marchY {
+      0% { background-position: 0 0; }
+      100% { background-position: 0 -40px; }
+    }
+
+    /* top title, slow elegant shine */
+    .titleWrap {
+      position: absolute;
+      top: 0;
+      left: 56px;
+      right: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .title {
+      font-weight: 800;
+      font-size: clamp(14px, 2.4vw, 28px);
+      letter-spacing: .3px;
+      line-height: 1;
+      background: linear-gradient(90deg, #ffffff, #ffe5e5, #ffffff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-size: 200% 100%;
+      animation: shine 7s linear infinite;
+      text-align: center;
+      white-space: nowrap;
+    }
+    @keyframes shine {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* optional, helper text, small and unobtrusive */
+    .hint {
+      position: absolute;
+      bottom: 68px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      color: #f0f0f0;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.15);
+      padding: 8px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      pointer-events: none;
+    }
+  </style>
 </head>
 <body>
-<div id="container">
-  <video id="video" autoplay playsinline></video>
-  <canvas id="output"></canvas>
-  <div id="frame"></div>
-  <div id="title">80th Anniversary Indonesia Independence</div>
-</div>
-<script>
-  const videoElement = document.getElementById('video');
-  const canvasElement = document.getElementById('output');
-  const canvasCtx = canvasElement.getContext('2d');
+  <div class="stage">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="draw"></canvas>
 
-  let drawing = false;
-  let lastX, lastY;
+    <!-- animated red, white frame -->
+    <div class="frame">
+      <div class="bar top"></div>
+      <div class="bar bottom"></div>
+      <div class="bar left"></div>
+      <div class="bar right"></div>
+    </div>
 
-  const hands = new Hands({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    <!-- title inside the top frame area -->
+    <div class="titleWrap">
+      <div class="title">80th Anniversary Indonesia Independence</div>
+    </div>
+
+    <div class="hint">Pinch thumb and index to draw, release to stop</div>
+  </div>
+
+  <script>
+    const videoEl = document.getElementById('cam');
+    const draw = document.getElementById('draw');
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const ctx = draw.getContext('2d');
+
+    // persistent drawing style
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#ffd400'; // warm yellow looks good on red, white
+
+    // keep canvas sized to element in css pixels, then scale for dpr
+    function fitCanvas() {
+      const rect = draw.getBoundingClientRect();
+      draw.width = Math.round(rect.width * dpr);
+      draw.height = Math.round(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-  });
+    window.addEventListener('resize', fitCanvas);
 
-  hands.setOptions({
-    maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7
-  });
+    // mirror flag because the video is mirrored with CSS
+    const MIRROR = true;
 
-  hands.onResults(onResults);
+    // gesture state
+    let drawing = false;
+    let last = null;
 
-  function onResults(results) {
-    canvasElement.width = videoElement.videoWidth;
-    canvasElement.height = videoElement.videoHeight;
+    function toCanvasXY(normX, normY) {
+      // landmarks are normalized 0 to 1 relative to the input image
+      const rect = draw.getBoundingClientRect();
+      const x = normX * rect.width;
+      const y = normY * rect.height;
+      return {
+        x: MIRROR ? rect.width - x : x,
+        y
+      };
+    }
 
-    // Draw camera frame
-    canvasCtx.save();
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    function pinchDist(lm) {
+      const a = lm[4];   // thumb tip
+      const b = lm[8];   // index tip
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.hypot(dx, dy); // normalized distance
+    }
 
-    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-      for (const landmarks of results.multiHandLandmarks) {
-        const thumb = landmarks[4];
-        const index = landmarks[8];
-        const dist = Math.hypot(
-          (thumb.x - index.x) * canvasElement.width,
-          (thumb.y - index.y) * canvasElement.height
-        );
-        if (dist < 40) {
-          const x = index.x * canvasElement.width;
-          const y = index.y * canvasElement.height;
-          if (!drawing) {
-            drawing = true;
-            lastX = x;
-            lastY = y;
-          } else {
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(lastX, lastY);
-            canvasCtx.lineTo(x, y);
-            canvasCtx.strokeStyle = 'yellow';
-            canvasCtx.lineWidth = 4;
-            canvasCtx.stroke();
-            lastX = x;
-            lastY = y;
-          }
+    // mediapipe hands
+    const hands = new Hands({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
+    hands.onResults(onResults);
+
+    function onResults(results) {
+      // do not clear the canvas, we want persistent strokes
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        drawing = false;
+        last = null;
+        return;
+      }
+      const lm = results.multiHandLandmarks[0];
+      const dist = pinchDist(lm);
+      const tip = toCanvasXY(lm[8].x, lm[8].y);
+
+      const PINCH_THRESHOLD = 0.05; // normalized, about 5 percent of frame
+
+      if (dist < PINCH_THRESHOLD) {
+        if (!drawing || !last) {
+          drawing = true;
+          last = tip;
         } else {
-          drawing = false;
+          ctx.beginPath();
+          ctx.moveTo(last.x, last.y);
+          // small smoothing toward current point
+          const mx = last.x + (tip.x - last.x) * 0.9;
+          const my = last.y + (tip.y - last.y) * 0.9;
+          ctx.lineTo(mx, my);
+          ctx.stroke();
+          last = { x: mx, y: my };
         }
+      } else {
+        drawing = false;
+        last = null;
       }
     }
-    canvasCtx.restore();
-  }
 
-  const camera = new Camera(videoElement, {
-    onFrame: async () => {
-      await hands.send({image: videoElement});
-    },
-    width: 1280,
-    height: 720
-  });
-  camera.start();
-</script>
+    // camera, start after permission
+    async function start() {
+      fitCanvas();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+
+        const camera = new Camera(videoEl, {
+          onFrame: async () => {
+            // send the video element directly, mediapipe reads the pixels
+            await hands.send({ image: videoEl });
+          },
+          width: 1280,
+          height: 720
+        });
+        camera.start();
+      } catch (err) {
+        console.error(err);
+        alert('Camera permission is needed. Please allow camera access.');
+      }
+    }
+
+    start();
+  </script>
 </body>
 </html>
