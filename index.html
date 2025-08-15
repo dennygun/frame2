@@ -21,30 +21,43 @@
 
     canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
+    /* Ensure drawing canvas is on top */
+    #overlay { z-index: 1; }
+    #draw { z-index: 2; }
+
     /* Red and white minimal frame */
     .frame { pointer-events: none; position: absolute; inset: 0; box-shadow:
       0 0 0 10px var(--white) inset,
       0 0 0 22px var(--red) inset;
       border-radius: 20px;
+      z-index: 3;
     }
 
     /* Header ribbon with text */
-    .ribbon { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); color: #b10000; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: clamp(12px, 2.5vw, 18px); letter-spacing: .3px; text-align: center; }
+    .ribbon { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); color: #b10000; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: clamp(12px, 2.5vw, 18px); letter-spacing: .3px; text-align: center; z-index: 4; }
 
-    .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); padding: 10px 12px; border-radius: 999px; backdrop-filter: blur(6px); }
+    .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); padding: 10px 12px; border-radius: 999px; backdrop-filter: blur(6px); z-index: 4; }
 
     .btn { appearance: none; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: var(--text); padding: 8px 12px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
     .btn:active { transform: translateY(1px); }
 
-    .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
+    .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; z-index: 4; }
 
     .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 900px; }
+
+    /* iOS specific fixes */
+    @supports (-webkit-touch-callout: none) {
+      video {
+        object-position: center;
+        -webkit-transform: scaleX(-1);
+      }
+    }
   </style>
 </head>
 <body>
   <div class="app">
     <div class="cam-wrap" id="cam">
-      <video id="video" playsinline autoplay muted></video>
+      <video id="video" playsinline autoplay muted webkit-playsinline></video>
       <!-- Canvas for per frame rendering and landmarks -->
       <canvas id="overlay"></canvas>
       <!-- Persistent drawing canvas -->
@@ -93,7 +106,7 @@
     const dctx = draw.getContext('2d');
     dctx.lineCap = 'round';
     dctx.lineJoin = 'round';
-    dctx.lineWidth = 5;
+    dctx.lineWidth = 6;
     dctx.strokeStyle = '#ffffff';
 
     // Simple line color cycle, red white theme
@@ -148,20 +161,20 @@
       // Use the first detected hand
       const landmarks = results.multiHandLandmarks[0];
 
-      // Optionally draw landmarks for debugging, very light
+      // Draw landmarks for debugging - much more subtle now
       octx.save();
-      octx.globalAlpha = .6;
-      octx.lineWidth = 2;
-      octx.strokeStyle = 'rgba(255,255,255,.6)';
-      octx.fillStyle = 'rgba(255,255,255,.25)';
-      // draw connectors
-      window.drawConnectors(octx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,.35)', lineWidth: 1 });
-      window.drawLandmarks(octx, landmarks, { color: 'rgba(255,255,255,.7)', lineWidth: 1, radius: 1.5 });
+      octx.globalAlpha = .3;
+      octx.lineWidth = 1;
+      octx.strokeStyle = 'rgba(255,255,255,.3)';
+      octx.fillStyle = 'rgba(255,255,255,.2)';
+      // draw connectors very subtly
+      window.drawConnectors(octx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,.2)', lineWidth: 0.5 });
+      window.drawLandmarks(octx, landmarks, { color: 'rgba(255,255,255,.4)', lineWidth: 0.5, radius: 1 });
       octx.restore();
 
       // Pinch to draw
       const { dist, x, y } = pinchInfo(landmarks, overlay.width, overlay.height);
-      const pinchThreshold = Math.max(10, overlay.width * 0.015);
+      const pinchThreshold = Math.max(15, overlay.width * 0.02);
 
       if (dist < pinchThreshold) {
         // start or continue drawing
@@ -171,16 +184,17 @@
           lastPt = pt;
           // change color for each new stroke, alternate red and white
           cycleColor();
-        } else {
+          // Start the path
           dctx.beginPath();
-          dctx.moveTo(lastPt.x, lastPt.y);
-          // simple smoothing toward current point
-          const mx = lastPt.x + (pt.x - lastPt.x) * 0.9;
-          const my = lastPt.y + (pt.y - lastPt.y) * 0.9;
-          dctx.lineTo(mx, my);
+          dctx.moveTo(pt.x, pt.y);
+        } else if (lastPt) {
+          // Continue drawing with smoother lines
+          dctx.lineTo(pt.x, pt.y);
           dctx.stroke();
-          lastPt = { x: mx, y: my };
+          dctx.beginPath();
+          dctx.moveTo(pt.x, pt.y);
         }
+        lastPt = pt;
       } else {
         drawing = false;
         lastPt = null;
@@ -192,8 +206,8 @@
     hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 1,
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence: 0.6
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
     });
     hands.onResults(onResults);
 
@@ -202,8 +216,26 @@
     async function start() {
       try {
         statusEl.textContent = 'Starting camera, please wait';
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        
+        // Better camera constraints for iOS compatibility
+        const constraints = {
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 720, max: 1280 },
+            height: { ideal: 960, max: 1280 },
+            aspectRatio: { ideal: 0.75 }
+          }, 
+          audio: false 
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         videoEl.srcObject = stream;
+        
+        // Wait for video to be ready
+        await new Promise((resolve) => {
+          videoEl.onloadedmetadata = resolve;
+        });
+        
         await videoEl.play();
         fitCanvases();
 
