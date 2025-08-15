@@ -1,93 +1,122 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Minimalist Camera, Hand Draw, 80th Anniversary Indonesia Independence</title>
-  <style>
-    html, body { height: 100%; margin: 0; background: #000; display: flex; justify-content: center; align-items: center; }
-    .cam-wrap { position: relative; width: 100%; max-width: 800px; aspect-ratio: 3/4; }
-    video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-    .frame { pointer-events: none; position: absolute; inset: 0; box-shadow: 0 0 0 10px white inset, 0 0 0 20px red inset; }
-    .ribbon { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: white; color: red; padding: 5px 10px; border-radius: 999px; font-weight: bold; font-size: 14px; }
-  </style>
+<meta charset="utf-8">
+<title>80th Indonesia Independence - Camera</title>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: black;
+  }
+  canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-  <div class="cam-wrap">
-    <video id="video" autoplay playsinline></video>
-    <canvas id="overlay"></canvas>
-    <canvas id="draw"></canvas>
-    <div class="frame"></div>
-    <div class="ribbon">80th Anniversary Indonesia Independence</div>
-  </div>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <script>
-    const video = document.getElementById('video');
-    const overlay = document.getElementById('overlay');
-    const drawCanvas = document.getElementById('draw');
-    const octx = overlay.getContext('2d');
-    const dctx = drawCanvas.getContext('2d');
-    let drawing = false, lastPt = null;
+<video id="video" playsinline style="display:none;"></video>
+<canvas id="canvas"></canvas>
 
-    function resizeCanvas() {
-      overlay.width = overlay.clientWidth;
-      overlay.height = overlay.clientHeight;
-      drawCanvas.width = overlay.clientWidth;
-      drawCanvas.height = overlay.clientHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let drawing = false;
+let prevX = null, prevY = null;
 
-    function pinchDistance(landmarks) {
-      const a = landmarks[4];
-      const b = landmarks[8];
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.hypot(dx, dy);
-    }
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
-    function onResults(results) {
-      octx.clearRect(0, 0, overlay.width, overlay.height);
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        const dist = pinchDistance(landmarks);
-        const x = (1 - landmarks[8].x) * overlay.width;
-        const y = landmarks[8].y * overlay.height;
+const hands = new Hands({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
 
-        if (dist < 0.05) {
-          if (!drawing) {
-            drawing = true;
-            lastPt = { x, y };
-          } else {
-            dctx.beginPath();
-            dctx.moveTo(lastPt.x, lastPt.y);
-            dctx.lineTo(x, y);
-            dctx.strokeStyle = 'white';
-            dctx.lineWidth = 4;
-            dctx.stroke();
-            lastPt = { x, y };
-          }
-        } else {
-          drawing = false;
-          lastPt = null;
-        }
+hands.onResults(results => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw video first
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  
+  // Red-white frame
+  ctx.lineWidth = 40;
+  ctx.strokeStyle = "red";
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "white";
+  ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+  
+  ctx.fillStyle = "white";
+  ctx.font = "bold 36px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("80th Anniversary Indonesia Independence", canvas.width / 2, 50);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const hand = results.multiHandLandmarks[0];
+    const indexTip = hand[8];
+    const thumbTip = hand[4];
+
+    const ix = indexTip.x * canvas.width;
+    const iy = indexTip.y * canvas.height;
+    const tx = thumbTip.x * canvas.width;
+    const ty = thumbTip.y * canvas.height;
+
+    const dist = Math.hypot(ix - tx, iy - ty);
+
+    if (dist < 40) { // Pinch threshold
+      if (!drawing) {
+        drawing = true;
+        prevX = ix;
+        prevY = iy;
+      } else {
+        ctx.beginPath();
+        ctx.strokeStyle = "yellow";
+        ctx.lineWidth = 5;
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(ix, iy);
+        ctx.stroke();
+        prevX = ix;
+        prevY = iy;
       }
+    } else {
+      drawing = false;
+      prevX = null;
+      prevY = null;
     }
+  }
+});
 
-    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    hands.onResults(onResults);
+async function initCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream;
+  await video.play();
 
-    const camera = new Camera(video, {
-      onFrame: async () => {
-        await hands.send({ image: video });
-      },
-      width: 640,
-      height: 480
-    });
-    camera.start();
-  </script>
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await hands.send({ image: video });
+    },
+    width: 1280,
+    height: 720
+  });
+  camera.start();
+}
+
+initCamera();
+</script>
 </body>
 </html>
