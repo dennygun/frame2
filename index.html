@@ -1,122 +1,299 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>80th Indonesia Independence - Camera</title>
-<style>
-  body, html {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: black;
-  }
-  canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-  }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Minimalist Camera, Hand Draw, 80th Anniversary Indonesia Independence</title>
+  <style>
+    :root {
+      --red: #d40000;
+      --white: #ffffff;
+      --bg: #0b0b0b;
+      --text: #f5f5f5;
+      --muted: #9aa3ab;
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji"; }
+    .app { display: grid; place-items: center; min-height: 100%; padding: 16px; }
+
+    .cam-wrap { position: relative; width: min(92vw, 900px); aspect-ratio: 3 / 4; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); background: #000; }
+
+    video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* Red and white minimal frame */
+    .frame { pointer-events: none; position: absolute; inset: 0; box-shadow:
+      0 0 0 10px var(--white) inset,
+      0 0 0 22px var(--red) inset;
+      border-radius: 20px;
+    }
+
+    /* Header ribbon with text */
+    .ribbon { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); color: #b10000; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: clamp(12px, 2.5vw, 18px); letter-spacing: .3px; text-align: center; }
+
+    .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); padding: 10px 12px; border-radius: 999px; backdrop-filter: blur(6px); }
+
+    .btn { appearance: none; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: var(--text); padding: 8px 12px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
+    .btn:active { transform: translateY(1px); }
+
+    .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
+
+    .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 900px; }
+  </style>
 </head>
 <body>
-<video id="video" playsinline style="display:none;"></video>
-<canvas id="canvas"></canvas>
+  <div class="app">
+    <div class="cam-wrap" id="cam">
+      <video id="video" playsinline autoplay muted></video>
+      <!-- Canvas for per frame rendering and landmarks -->
+      <canvas id="overlay"></canvas>
+      <!-- Persistent drawing canvas -->
+      <canvas id="draw"></canvas>
 
-<script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let drawing = false;
-let prevX = null, prevY = null;
+      <div class="frame"></div>
+      <div class="ribbon">80th Anniversary Indonesia Independence</div>
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
+      <div class="legend" id="legend">Pinch thumb and index to draw, release to stop, move hand to sketch in the air</div>
 
-const hands = new Hands({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-});
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.7
-});
+      <div class="hud">
+        <button class="btn" id="clearBtn" title="Clear drawing">Clear</button>
+        <button class="btn" id="mirrorBtn" title="Toggle mirror">Mirror On</button>
+        <button class="btn" id="saveBtn" title="Save snapshot">Save</button>
+      </div>
+    </div>
 
-hands.onResults(results => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw video first
-  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-  
-  // Red-white frame
-  ctx.lineWidth = 40;
-  ctx.strokeStyle = "red";
-  ctx.strokeRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "white";
-  ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
-  
-  ctx.fillStyle = "white";
-  ctx.font = "bold 36px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("80th Anniversary Indonesia Independence", canvas.width / 2, 50);
+    <div class="notice" id="status">Requesting camera permission, if you see nothing, allow camera access in your browser settings</div>
+  </div>
 
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const hand = results.multiHandLandmarks[0];
-    const indexTip = hand[8];
-    const thumbTip = hand[4];
+  <!-- MediaPipe Hands, Camera Utils, Drawing Utils from jsDelivr -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
-    const ix = indexTip.x * canvas.width;
-    const iy = indexTip.y * canvas.height;
-    const tx = thumbTip.x * canvas.width;
-    const ty = thumbTip.y * canvas.height;
+  <script>
+    const videoEl = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const draw = document.getElementById('draw');
+    const clearBtn = document.getElementById('clearBtn');
+    const mirrorBtn = document.getElementById('mirrorBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const statusEl = document.getElementById('status');
+    const legendEl = document.getElementById('legend');
 
-    const dist = Math.hypot(ix - tx, iy - ty);
+    let isMirrored = true;
 
-    if (dist < 40) { // Pinch threshold
-      if (!drawing) {
-        drawing = true;
-        prevX = ix;
-        prevY = iy;
-      } else {
-        ctx.beginPath();
-        ctx.strokeStyle = "yellow";
-        ctx.lineWidth = 5;
-        ctx.moveTo(prevX, prevY);
-        ctx.lineTo(ix, iy);
-        ctx.stroke();
-        prevX = ix;
-        prevY = iy;
-      }
-    } else {
-      drawing = false;
-      prevX = null;
-      prevY = null;
+    // Resize canvases to match video box
+    function fitCanvases() {
+      const rect = document.getElementById('cam').getBoundingClientRect();
+      [overlay, draw].forEach(c => { c.width = rect.width; c.height = rect.height; });
     }
-  }
-});
+    addEventListener('resize', fitCanvases);
 
-async function initCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
-  await video.play();
+    const octx = overlay.getContext('2d');
+    const dctx = draw.getContext('2d');
+    dctx.lineCap = 'round';
+    dctx.lineJoin = 'round';
+    dctx.lineWidth = 5;
+    dctx.strokeStyle = '#ffffff';
 
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await hands.send({ image: video });
-    },
-    width: 1280,
-    height: 720
-  });
-  camera.start();
-}
+    // Simple line color cycle, red white theme
+    const colors = ['#ffffff', '#d40000'];
+    let colorIndex = 0;
 
-initCamera();
-</script>
+    function cycleColor() {
+      colorIndex = (colorIndex + 1) % colors.length;
+      dctx.strokeStyle = colors[colorIndex];
+    }
+
+    // Gesture state
+    let drawing = false;
+    let lastPt = null;
+
+    // Compute pinch distance between thumb tip 4 and index tip 8
+    function pinchInfo(landmarks, w, h) {
+      const a = landmarks[4];
+      const b = landmarks[8];
+      const x1 = a.x * w, y1 = a.y * h;
+      const x2 = b.x * w, y2 = b.y * h;
+      const dx = x2 - x1, dy = y2 - y1;
+      const dist = Math.hypot(dx, dy);
+      return { dist, x: x2, y: y2 };
+    }
+
+    // Debounced hint hide
+    let hintTimer = setTimeout(() => legendEl.style.opacity = .0, 6000);
+
+    function onResults(results) {
+      fitCanvases();
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+
+      // Draw video frame onto overlay so we can export one canvas later
+      if (videoEl.videoWidth) {
+        // Mirror control
+        octx.save();
+        if (isMirrored) {
+          octx.translate(overlay.width, 0);
+          octx.scale(-1, 1);
+        }
+        octx.drawImage(videoEl, 0, 0, overlay.width, overlay.height);
+        octx.restore();
+      }
+
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        drawing = false;
+        lastPt = null;
+        return;
+      }
+
+      // Use the first detected hand
+      const landmarks = results.multiHandLandmarks[0];
+
+      // Optionally draw landmarks for debugging, very light
+      octx.save();
+      octx.globalAlpha = .6;
+      octx.lineWidth = 2;
+      octx.strokeStyle = 'rgba(255,255,255,.6)';
+      octx.fillStyle = 'rgba(255,255,255,.25)';
+      // draw connectors
+      window.drawConnectors(octx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,.35)', lineWidth: 1 });
+      window.drawLandmarks(octx, landmarks, { color: 'rgba(255,255,255,.7)', lineWidth: 1, radius: 1.5 });
+      octx.restore();
+
+      // Pinch to draw
+      const { dist, x, y } = pinchInfo(landmarks, overlay.width, overlay.height);
+      const pinchThreshold = Math.max(10, overlay.width * 0.015);
+
+      if (dist < pinchThreshold) {
+        // start or continue drawing
+        const pt = { x: isMirrored ? overlay.width - x : x, y };
+        if (!drawing) {
+          drawing = true;
+          lastPt = pt;
+          // change color for each new stroke, alternate red and white
+          cycleColor();
+        } else {
+          dctx.beginPath();
+          dctx.moveTo(lastPt.x, lastPt.y);
+          // simple smoothing toward current point
+          const mx = lastPt.x + (pt.x - lastPt.x) * 0.9;
+          const my = lastPt.y + (pt.y - lastPt.y) * 0.9;
+          dctx.lineTo(mx, my);
+          dctx.stroke();
+          lastPt = { x: mx, y: my };
+        }
+      } else {
+        drawing = false;
+        lastPt = null;
+      }
+    }
+
+    // Setup MediaPipe Hands
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+    hands.onResults(onResults);
+
+    // Camera stream into MediaPipe
+    let camera;
+    async function start() {
+      try {
+        statusEl.textContent = 'Starting camera, please wait';
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+        fitCanvases();
+
+        camera = new Camera(videoEl, {
+          onFrame: async () => {
+            await hands.send({image: videoEl});
+          },
+          width: 720,
+          height: 960
+        });
+        camera.start();
+        statusEl.textContent = 'Pinch thumb and index to draw, use Clear to erase, use Save for a snapshot';
+      } catch (e) {
+        console.error(e);
+        statusEl.textContent = 'Camera access failed, check permissions and reload the page';
+      }
+    }
+
+    // UI actions
+    clearBtn.addEventListener('click', () => {
+      dctx.clearRect(0, 0, draw.width, draw.height);
+    });
+
+    mirrorBtn.addEventListener('click', () => {
+      isMirrored = !isMirrored;
+      videoEl.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+      mirrorBtn.textContent = isMirrored ? 'Mirror On' : 'Mirror Off';
+    });
+
+    saveBtn.addEventListener('click', () => {
+      // Merge overlay and drawing into one image for saving
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = overlay.width;
+      exportCanvas.height = overlay.height;
+      const ectx = exportCanvas.getContext('2d');
+
+      // Draw the same composition order
+      ectx.drawImage(overlay, 0, 0);
+      ectx.drawImage(draw, 0, 0);
+
+      // Add frame and text again on export for crisp result
+      // white inner then red outer strokes
+      const insetWhite = 10, insetRed = 22;
+      ectx.save();
+      ectx.strokeStyle = '#ffffff';
+      ectx.lineWidth = insetWhite * 2;
+      roundRect(ectx, insetWhite, insetWhite, exportCanvas.width - insetWhite*2, exportCanvas.height - insetWhite*2, 20);
+      ectx.stroke();
+      ectx.strokeStyle = '#d40000';
+      ectx.lineWidth = (insetRed - insetWhite) * 2;
+      roundRect(ectx, insetRed, insetRed, exportCanvas.width - insetRed*2, exportCanvas.height - insetRed*2, 20);
+      ectx.stroke();
+
+      // Ribbon text
+      const text = '80th Anniversary Indonesia Independence';
+      ectx.fillStyle = 'rgba(255,255,255,.92)';
+      const ribbonPaddingX = 16, ribbonPaddingY = 6, radius = 999;
+      ectx.font = `${Math.max(14, Math.round(exportCanvas.width * 0.022))}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial`;
+      const tw = ectx.measureText(text).width;
+      const tx = exportCanvas.width / 2 - tw / 2;
+      const ty = 24 + ribbonPaddingY + parseInt(ectx.font, 10);
+      // draw ribbon background as rounded rect behind text
+      const rbX = tx - ribbonPaddingX, rbY = 14, rbW = tw + ribbonPaddingX*2, rbH = parseInt(ectx.font, 10) + ribbonPaddingY*2;
+      ectx.fillStyle = 'rgba(255,255,255,.92)';
+      roundRect(ectx, rbX, rbY, rbW, rbH, rbH/2);
+      ectx.fill();
+      ectx.fillStyle = '#b10000';
+      ectx.textBaseline = 'middle';
+      ectx.fillText(text, tx, rbY + rbH/2);
+      ectx.restore();
+
+      const url = exportCanvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'air-drawing-indonesia-80th.png';
+      a.click();
+    });
+
+    function roundRect(ctx, x, y, w, h, r) {
+      const rr = Math.min(r, w/2, h/2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+
+    start();
+  </script>
 </body>
 </html>
