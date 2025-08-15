@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>80th Anniversary Camera App</title>
+<title>80th Anniversary Indonesia Independence</title>
 <style>
   html, body {
     margin: 0;
     padding: 0;
-    background: black;
-    overflow: hidden;
     height: 100%;
+    overflow: hidden;
+    background: black;
   }
   #container {
     position: relative;
@@ -25,134 +25,131 @@
     height: 100%;
     object-fit: cover;
   }
-  #frameCanvas {
+  /* Frame border animation */
+  #frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 20px solid;
+    border-image: linear-gradient(90deg, red, white, red) 1;
+    animation: borderShift 6s linear infinite;
     pointer-events: none;
   }
+  @keyframes borderShift {
+    0% { border-image-source: linear-gradient(90deg, red, white, red); }
+    50% { border-image-source: linear-gradient(270deg, red, white, red); }
+    100% { border-image-source: linear-gradient(90deg, red, white, red); }
+  }
+  /* Top text with shine */
+  #title {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 2.2vw;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+    white-space: nowrap;
+    pointer-events: none;
+    background: linear-gradient(90deg, white, #ffcccc, white);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-size: 200% auto;
+    animation: shine 6s linear infinite;
+  }
+  @keyframes shine {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
 <body>
 <div id="container">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="drawCanvas"></canvas>
-  <canvas id="frameCanvas"></canvas>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="output"></canvas>
+  <div id="frame"></div>
+  <div id="title">80th Anniversary Indonesia Independence</div>
 </div>
-
 <script>
-(async () => {
-  const video = document.getElementById('video');
-  const drawCanvas = document.getElementById('drawCanvas');
-  const frameCanvas = document.getElementById('frameCanvas');
-  const drawCtx = drawCanvas.getContext('2d');
-  const frameCtx = frameCanvas.getContext('2d');
+  const videoElement = document.getElementById('video');
+  const canvasElement = document.getElementById('output');
+  const canvasCtx = canvasElement.getContext('2d');
 
-  // Resize handler
-  function resizeCanvas() {
-    drawCanvas.width = frameCanvas.width = video.videoWidth || window.innerWidth;
-    drawCanvas.height = frameCanvas.height = video.videoHeight || window.innerHeight;
-  }
-
-  // Start camera
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    video.srcObject = stream;
-    await new Promise(resolve => video.onloadedmetadata = resolve);
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-  } catch (err) {
-    console.error('Camera error:', err);
-    return;
-  }
-
-  // Load MediaPipe Hands via TFJS wrapper
-  const detectorConfig = {
-    runtime: 'mediapipe',
-    modelType: 'lite',
-    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
-  };
-  const detector = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, detectorConfig);
-
-  // Drawing state
   let drawing = false;
-  let lastX = null;
-  let lastY = null;
+  let lastX, lastY;
 
-  function drawFrame() {
-    frameCtx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
-    const w = frameCanvas.width;
-    const h = frameCanvas.height;
-    const frameThickness = 20;
+  const hands = new Hands({
+    locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }
+  });
 
-    // Red and white border (top half red, bottom half white)
-    frameCtx.fillStyle = 'red';
-    frameCtx.fillRect(0, 0, w, frameThickness);
-    frameCtx.fillRect(0, 0, frameThickness, h/2);
-    frameCtx.fillRect(w - frameThickness, 0, frameThickness, h/2);
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
 
-    frameCtx.fillStyle = 'white';
-    frameCtx.fillRect(0, h - frameThickness, w, frameThickness);
-    frameCtx.fillRect(0, h/2, frameThickness, h/2);
-    frameCtx.fillRect(w - frameThickness, h/2, frameThickness, h/2);
+  hands.onResults(onResults);
 
-    // Text
-    frameCtx.font = `${Math.floor(w/20)}px sans-serif`;
-    frameCtx.fillStyle = 'white';
-    frameCtx.textAlign = 'center';
-    frameCtx.fillText('80th Anniversary Indonesia Independence', w/2, frameThickness*3);
-  }
+  function onResults(results) {
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
 
-  async function render() {
-    const hands = await detector.estimateHands(video, { flipHorizontal: true });
+    // Draw camera frame
+    canvasCtx.save();
+    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-    if (hands.length > 0) {
-      const landmarks = hands[0].keypoints;
-      const thumbTip = landmarks.find(p => p.name === 'thumb_tip');
-      const indexTip = landmarks.find(p => p.name === 'index_finger_tip');
-
-      if (thumbTip && indexTip) {
-        const dx = thumbTip.x - indexTip.x;
-        const dy = thumbTip.y - indexTip.y;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-
-        const pinch = distance < 40; // threshold for pinch detection
-        const x = indexTip.x;
-        const y = indexTip.y;
-
-        if (pinch) {
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      for (const landmarks of results.multiHandLandmarks) {
+        const thumb = landmarks[4];
+        const index = landmarks[8];
+        const dist = Math.hypot(
+          (thumb.x - index.x) * canvasElement.width,
+          (thumb.y - index.y) * canvasElement.height
+        );
+        if (dist < 40) {
+          const x = index.x * canvasElement.width;
+          const y = index.y * canvasElement.height;
           if (!drawing) {
             drawing = true;
             lastX = x;
             lastY = y;
           } else {
-            drawCtx.strokeStyle = 'red';
-            drawCtx.lineWidth = 4;
-            drawCtx.beginPath();
-            drawCtx.moveTo(lastX, lastY);
-            drawCtx.lineTo(x, y);
-            drawCtx.stroke();
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(lastX, lastY);
+            canvasCtx.lineTo(x, y);
+            canvasCtx.strokeStyle = 'yellow';
+            canvasCtx.lineWidth = 4;
+            canvasCtx.stroke();
             lastX = x;
             lastY = y;
           }
         } else {
           drawing = false;
-          lastX = null;
-          lastY = null;
         }
       }
     }
-
-    drawFrame();
-    requestAnimationFrame(render);
+    canvasCtx.restore();
   }
 
-  drawFrame();
-  render();
-})();
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await hands.send({image: videoElement});
+    },
+    width: 1280,
+    height: 720
+  });
+  camera.start();
 </script>
 </body>
 </html>
