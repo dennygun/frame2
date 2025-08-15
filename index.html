@@ -3,6 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="screen-orientation" content="portrait" />
+  <meta name="orientation" content="portrait" />
   <title>Minimalist Camera, Hand Draw, 80th Anniversary Indonesia Independence</title>
   <style>
     :root {
@@ -15,9 +17,26 @@
     html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji"; }
     .app { display: grid; place-items: center; min-height: 100%; padding: 16px; }
 
-    .cam-wrap { position: relative; width: min(92vw, 900px); aspect-ratio: 3 / 4; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); background: #000; }
+    /* Force portrait orientation */
+    @media screen and (orientation: landscape) {
+      .app::before {
+        content: "Please rotate your device to portrait mode";
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        z-index: 9999;
+        font-size: 18px;
+        text-align: center;
+      }
+      .cam-wrap { display: none; }
+    }
 
-    video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    .cam-wrap { position: relative; width: min(92vw, 400px); aspect-ratio: 3 / 4; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); background: #000; }
+
+    video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
     canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
@@ -43,15 +62,7 @@
 
     .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; z-index: 4; }
 
-    .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 900px; }
-
-    /* iOS specific fixes */
-    @supports (-webkit-touch-callout: none) {
-      video {
-        object-position: center;
-        -webkit-transform: scaleX(-1);
-      }
-    }
+    .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 400px; }
   </style>
 </head>
 <body>
@@ -142,7 +153,7 @@
 
       // Draw video frame onto overlay so we can export one canvas later
       if (videoEl.videoWidth) {
-        // Mirror control
+        // Mirror control - apply mirroring to canvas drawing, not video element
         octx.save();
         if (isMirrored) {
           octx.translate(overlay.width, 0);
@@ -217,13 +228,12 @@
       try {
         statusEl.textContent = 'Starting camera, please wait';
         
-        // Better camera constraints for iOS compatibility
+        // Better camera constraints for mobile compatibility
         const constraints = {
           video: { 
             facingMode: 'user',
-            width: { ideal: 720, max: 1280 },
-            height: { ideal: 960, max: 1280 },
-            aspectRatio: { ideal: 0.75 }
+            width: { ideal: 480, max: 720 },
+            height: { ideal: 640, max: 960 }
           }, 
           audio: false 
         };
@@ -243,8 +253,8 @@
           onFrame: async () => {
             await hands.send({image: videoEl});
           },
-          width: 720,
-          height: 960
+          width: 480,
+          height: 640
         });
         camera.start();
         statusEl.textContent = 'Pinch thumb and index to draw, use Clear to erase, use Save for a snapshot';
@@ -261,7 +271,7 @@
 
     mirrorBtn.addEventListener('click', () => {
       isMirrored = !isMirrored;
-      videoEl.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
+      // Don't transform the video element, only change the canvas rendering
       mirrorBtn.textContent = isMirrored ? 'Mirror On' : 'Mirror Off';
     });
 
