@@ -2,139 +2,156 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>80th Independence Camera</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>80th Anniversary Camera App</title>
 <style>
-  body {
+  html, body {
     margin: 0;
-    overflow: hidden;
+    padding: 0;
     background: black;
+    overflow: hidden;
+    height: 100%;
   }
   #container {
     position: relative;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
   }
-  canvas, video {
+  video, canvas {
     position: absolute;
     top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
-  #drawCanvas {
-    pointer-events: none; /* Let touches go through */
+  #frameCanvas {
+    pointer-events: none;
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands"></script>
 </head>
 <body>
 <div id="container">
-  <video id="webcam" autoplay playsinline muted></video>
-  <canvas id="videoCanvas"></canvas>
+  <video id="video" autoplay playsinline muted></video>
   <canvas id="drawCanvas"></canvas>
+  <canvas id="frameCanvas"></canvas>
 </div>
 
 <script>
-const video = document.getElementById('webcam');
-const videoCanvas = document.getElementById('videoCanvas');
-const drawCanvas = document.getElementById('drawCanvas');
-const videoCtx = videoCanvas.getContext('2d');
-const drawCtx = drawCanvas.getContext('2d');
+(async () => {
+  const video = document.getElementById('video');
+  const drawCanvas = document.getElementById('drawCanvas');
+  const frameCanvas = document.getElementById('frameCanvas');
+  const drawCtx = drawCanvas.getContext('2d');
+  const frameCtx = frameCanvas.getContext('2d');
 
-let model;
-let drawing = false;
-let lastX, lastY;
-
-async function initCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
-  return new Promise(resolve => {
-    video.onloadedmetadata = () => {
-      video.play();
-      videoCanvas.width = video.videoWidth;
-      videoCanvas.height = video.videoHeight;
-      drawCanvas.width = video.videoWidth;
-      drawCanvas.height = video.videoHeight;
-      resolve();
-    };
-  });
-}
-
-async function initModel() {
-  model = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, {
-    runtime: 'mediapipe',
-    modelType: 'lite',
-    maxHands: 1,
-    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
-  });
-}
-
-function drawFrame() {
-  const w = drawCanvas.width;
-  const h = drawCanvas.height;
-
-  drawCtx.save();
-  drawCtx.lineWidth = 20;
-  drawCtx.strokeStyle = 'red';
-  drawCtx.strokeRect(0, 0, w, h);
-
-  drawCtx.lineWidth = 15;
-  drawCtx.strokeStyle = 'white';
-  drawCtx.strokeRect(30, 30, w - 60, h - 60);
-
-  drawCtx.font = '40px sans-serif';
-  drawCtx.fillStyle = 'white';
-  drawCtx.textAlign = 'center';
-  drawCtx.fillText('80th Anniversary Indonesia Independence', w / 2, 60);
-  drawCtx.restore();
-}
-
-async function renderLoop() {
-  videoCtx.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
-
-  const hands = await model.estimateHands(video);
-  if (hands.length > 0) {
-    const keypoints = hands[0].keypoints;
-    const indexTip = keypoints.find(k => k.name === 'index_finger_tip');
-    const thumbTip = keypoints.find(k => k.name === 'thumb_tip');
-
-    if (indexTip && thumbTip) {
-      const dist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-      if (dist < 40) {
-        if (!drawing) {
-          drawing = true;
-          lastX = indexTip.x;
-          lastY = indexTip.y;
-        }
-        drawCtx.beginPath();
-        drawCtx.moveTo(lastX, lastY);
-        drawCtx.lineTo(indexTip.x, indexTip.y);
-        drawCtx.strokeStyle = 'yellow';
-        drawCtx.lineWidth = 5;
-        drawCtx.stroke();
-        lastX = indexTip.x;
-        lastY = indexTip.y;
-      } else {
-        drawing = false;
-      }
-
-      // Draw fingertip dot
-      drawCtx.beginPath();
-      drawCtx.arc(indexTip.x, indexTip.y, 8, 0, Math.PI * 2);
-      drawCtx.fillStyle = 'yellow';
-      drawCtx.fill();
-    }
+  // Resize handler
+  function resizeCanvas() {
+    drawCanvas.width = frameCanvas.width = video.videoWidth || window.innerWidth;
+    drawCanvas.height = frameCanvas.height = video.videoHeight || window.innerHeight;
   }
 
-  requestAnimationFrame(renderLoop);
-}
+  // Start camera
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    await new Promise(resolve => video.onloadedmetadata = resolve);
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+  } catch (err) {
+    console.error('Camera error:', err);
+    return;
+  }
 
-(async () => {
-  await initCamera();
-  await initModel();
+  // Load MediaPipe Hands via TFJS wrapper
+  const detectorConfig = {
+    runtime: 'mediapipe',
+    modelType: 'lite',
+    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
+  };
+  const detector = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, detectorConfig);
+
+  // Drawing state
+  let drawing = false;
+  let lastX = null;
+  let lastY = null;
+
+  function drawFrame() {
+    frameCtx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+    const w = frameCanvas.width;
+    const h = frameCanvas.height;
+    const frameThickness = 20;
+
+    // Red and white border (top half red, bottom half white)
+    frameCtx.fillStyle = 'red';
+    frameCtx.fillRect(0, 0, w, frameThickness);
+    frameCtx.fillRect(0, 0, frameThickness, h/2);
+    frameCtx.fillRect(w - frameThickness, 0, frameThickness, h/2);
+
+    frameCtx.fillStyle = 'white';
+    frameCtx.fillRect(0, h - frameThickness, w, frameThickness);
+    frameCtx.fillRect(0, h/2, frameThickness, h/2);
+    frameCtx.fillRect(w - frameThickness, h/2, frameThickness, h/2);
+
+    // Text
+    frameCtx.font = `${Math.floor(w/20)}px sans-serif`;
+    frameCtx.fillStyle = 'white';
+    frameCtx.textAlign = 'center';
+    frameCtx.fillText('80th Anniversary Indonesia Independence', w/2, frameThickness*3);
+  }
+
+  async function render() {
+    const hands = await detector.estimateHands(video, { flipHorizontal: true });
+
+    if (hands.length > 0) {
+      const landmarks = hands[0].keypoints;
+      const thumbTip = landmarks.find(p => p.name === 'thumb_tip');
+      const indexTip = landmarks.find(p => p.name === 'index_finger_tip');
+
+      if (thumbTip && indexTip) {
+        const dx = thumbTip.x - indexTip.x;
+        const dy = thumbTip.y - indexTip.y;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+
+        const pinch = distance < 40; // threshold for pinch detection
+        const x = indexTip.x;
+        const y = indexTip.y;
+
+        if (pinch) {
+          if (!drawing) {
+            drawing = true;
+            lastX = x;
+            lastY = y;
+          } else {
+            drawCtx.strokeStyle = 'red';
+            drawCtx.lineWidth = 4;
+            drawCtx.beginPath();
+            drawCtx.moveTo(lastX, lastY);
+            drawCtx.lineTo(x, y);
+            drawCtx.stroke();
+            lastX = x;
+            lastY = y;
+          }
+        } else {
+          drawing = false;
+          lastX = null;
+          lastY = null;
+        }
+      }
+    }
+
+    drawFrame();
+    requestAnimationFrame(render);
+  }
+
   drawFrame();
-  renderLoop();
+  render();
 })();
 </script>
 </body>
