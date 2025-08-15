@@ -3,12 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>80th Anniversary Indonesia Independence</title>
+<title>80th Indonesia Independence - Hand Draw Camera</title>
 <style>
-  body {
+  body, html {
     margin: 0;
+    padding: 0;
     overflow: hidden;
+    height: 100%;
     background: black;
+  }
+  #container {
+    position: relative;
+    width: 100%;
+    height: 100%;
   }
   video, canvas {
     position: absolute;
@@ -18,25 +25,24 @@
     height: 100%;
     object-fit: cover;
   }
-  #frame {
+  /* Red and white frame */
+  .frame {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    box-sizing: border-box;
-    border: 10px solid red;
-    border-image: linear-gradient(90deg, red 50%, white 50%);
-    border-image-slice: 1;
     pointer-events: none;
-    animation: shine 4s linear infinite;
+    box-sizing: border-box;
+    border: 15px solid transparent;
+    animation: shine 6s infinite linear;
   }
   @keyframes shine {
-    0% { border-image-source: linear-gradient(90deg, red 50%, white 50%); }
-    50% { border-image-source: linear-gradient(90deg, white 50%, red 50%); }
-    100% { border-image-source: linear-gradient(90deg, red 50%, white 50%); }
+    0%   { border-color: red white red white; }
+    50%  { border-color: white red white red; }
+    100% { border-color: red white red white; }
   }
-  #text {
+  .title {
     position: absolute;
     top: 20px;
     width: 100%;
@@ -44,74 +50,103 @@
     font-size: 2em;
     font-weight: bold;
     color: white;
-    text-shadow: 2px 2px 5px black;
-    pointer-events: none;
+    text-shadow: 2px 2px 4px black;
   }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-<video id="video" autoplay playsinline></video>
-<canvas id="drawCanvas"></canvas>
-<div id="frame"></div>
-<div id="text">80th Anniversary Indonesia Independence</div>
+<div id="container">
+  <video id="video" autoplay playsinline></video>
+  <canvas id="output"></canvas>
+  <div class="frame"></div>
+  <div class="title">80th Anniversary Indonesia Independence</div>
+</div>
+
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('drawCanvas');
-const ctx = canvas.getContext('2d');
+  const videoElement = document.getElementById('video');
+  const canvasElement = document.getElementById('output');
+  const canvasCtx = canvasElement.getContext('2d');
 
-let model, drawing = false, lastX, lastY;
+  let isDrawing = false;
+  let lastX = null;
+  let lastY = null;
 
-async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
-  return new Promise(resolve => { video.onloadedmetadata = resolve; });
-}
+  // Make canvas persistent by not clearing it entirely
+  function drawPersistentLine(x, y) {
+    if (lastX !== null && lastY !== null) {
+      canvasCtx.strokeStyle = 'yellow';
+      canvasCtx.lineWidth = 5;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(lastX, lastY);
+      canvasCtx.lineTo(x, y);
+      canvasCtx.stroke();
+    }
+    lastX = x;
+    lastY = y;
+  }
 
-async function main() {
-  await setupCamera();
-  model = await handpose.load();
-  video.play();
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  detectHands();
-}
+  function resetDrawing() {
+    lastX = null;
+    lastY = null;
+  }
 
-async function detectHands() {
-  const predictions = await model.estimateHands(video);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = 'yellow';
-  ctx.lineCap = 'round';
+  function onResults(results) {
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
 
-  if (predictions.length > 0) {
-    const landmarks = predictions[0].landmarks;
-    const [x1, y1] = landmarks[4];
-    const [x2, y2] = landmarks[8];
-    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const landmarks = results.multiHandLandmarks[0];
+    const indexTip = landmarks[8];
+    const thumbTip = landmarks[4];
 
-    if (dist < 40) {
-      if (!drawing) {
-        drawing = true;
-        lastX = x2 / video.videoWidth * canvas.width;
-        lastY = y2 / video.videoHeight * canvas.height;
-      }
-      ctx.beginPath();
-      ctx.moveTo(lastX, lastY);
-      ctx.lineTo(x2 / video.videoWidth * canvas.width, y2 / video.videoHeight * canvas.height);
-      ctx.stroke();
-      lastX = x2 / video.videoWidth * canvas.width;
-      lastY = y2 / video.videoHeight * canvas.height;
+    const pinchDistance = Math.hypot(
+      indexTip.x - thumbTip.x,
+      indexTip.y - thumbTip.y
+    );
+
+    const videoWidth = canvasElement.width;
+    const videoHeight = canvasElement.height;
+
+    const x = indexTip.x * videoWidth;
+    const y = indexTip.y * videoHeight;
+
+    if (pinchDistance < 0.05) {
+      isDrawing = true;
+      drawPersistentLine(x, y);
     } else {
-      drawing = false;
+      isDrawing = false;
+      resetDrawing();
     }
   }
-  requestAnimationFrame(detectHands);
-}
 
-main();
+  const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.5
+  });
+  hands.onResults(onResults);
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await hands.send({image: videoElement});
+    },
+    width: 1280,
+    height: 720
+  });
+  camera.start();
+
+  // Remove mirroring
+  videoElement.style.transform = 'scaleX(1)';
+
+  // Adjust canvas size dynamically
+  function resizeCanvas() {
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
+  }
+  videoElement.addEventListener('loadedmetadata', resizeCanvas);
 </script>
 </body>
 </html>
