@@ -1,135 +1,152 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>80 Tahun Kemerdekaan RI - AR Selfie Frame</title>
+<title>80th Indonesia Independence - Hand Draw Camera</title>
 <style>
-  html, body {
+  body, html {
     margin: 0;
     padding: 0;
-    height: 100%;
     overflow: hidden;
-    background: #000;
+    height: 100%;
+    background: black;
   }
   #container {
     position: relative;
     width: 100%;
     height: 100%;
-    overflow: hidden;
   }
-  video {
+  video, canvas {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    /* Removed mirror effect */
-    transform: none;
   }
-  #drawCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 10;
-    pointer-events: none;
-  }
-  /* Red-white animated top border */
-  .border-top {
+  /* Red and white frame */
+  .frame {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 40px;
-    background: linear-gradient(270deg, red, white, red);
-    background-size: 400% 400%;
-    animation: shine 8s linear infinite;
-    z-index: 20;
+    height: 100%;
+    pointer-events: none;
+    box-sizing: border-box;
+    border: 15px solid transparent;
+    animation: shine 6s infinite linear;
   }
   @keyframes shine {
-    0% { background-position: 0% 50%; }
-    100% { background-position: 100% 50%; }
+    0%   { border-color: red white red white; }
+    50%  { border-color: white red white red; }
+    100% { border-color: red white red white; }
   }
-  /* Text overlay */
-  .text-overlay {
+  .title {
     position: absolute;
-    top: 50px;
+    top: 20px;
     width: 100%;
     text-align: center;
-    font-size: 28px;
+    font-size: 2em;
     font-weight: bold;
     color: white;
     text-shadow: 2px 2px 4px black;
-    z-index: 20;
   }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 </head>
 <body>
-
 <div id="container">
   <video id="video" autoplay playsinline></video>
-  <canvas id="drawCanvas"></canvas>
-  <div class="border-top"></div>
-  <div class="text-overlay">80 Tahun Kemerdekaan Indonesia</div>
+  <canvas id="output"></canvas>
+  <div class="frame"></div>
+  <div class="title">80th Anniversary Indonesia Independence</div>
 </div>
 
 <script>
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('drawCanvas');
-  const ctx = canvas.getContext('2d');
-  
-  let drawing = false;
-  let lastX, lastY;
+  const videoElement = document.getElementById('video');
+  const canvasElement = document.getElementById('output');
+  const canvasCtx = canvasElement.getContext('2d');
 
-  // Camera setup
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-    .then(stream => {
-      video.srcObject = stream;
-    })
-    .catch(err => {
-      console.error("Camera error:", err);
-    });
+  let isDrawing = false;
+  let lastX = null;
+  let lastY = null;
 
-  function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
-
-  // Drawing with touch
-  canvas.addEventListener('touchstart', e => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    lastX = touch.clientX - rect.left;
-    lastY = touch.clientY - rect.top;
-    drawing = true;
-  });
-
-  canvas.addEventListener('touchmove', e => {
-    e.preventDefault();
-    if (!drawing) return;
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-    ctx.strokeStyle = 'yellow';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+  // Make canvas persistent by not clearing it entirely
+  function drawPersistentLine(x, y) {
+    if (lastX !== null && lastY !== null) {
+      canvasCtx.strokeStyle = 'yellow';
+      canvasCtx.lineWidth = 5;
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(lastX, lastY);
+      canvasCtx.lineTo(x, y);
+      canvasCtx.stroke();
+    }
     lastX = x;
     lastY = y;
-  });
+  }
 
-  canvas.addEventListener('touchend', e => {
-    drawing = false;
+  function resetDrawing() {
+    lastX = null;
+    lastY = null;
+  }
+
+  function onResults(results) {
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
+
+    const landmarks = results.multiHandLandmarks[0];
+    const indexTip = landmarks[8];
+    const thumbTip = landmarks[4];
+
+    const pinchDistance = Math.hypot(
+      indexTip.x - thumbTip.x,
+      indexTip.y - thumbTip.y
+    );
+
+    const videoWidth = canvasElement.width;
+    const videoHeight = canvasElement.height;
+
+    const x = indexTip.x * videoWidth;
+    const y = indexTip.y * videoHeight;
+
+    if (pinchDistance < 0.05) {
+      isDrawing = true;
+      drawPersistentLine(x, y);
+    } else {
+      isDrawing = false;
+      resetDrawing();
+    }
+  }
+
+  const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.5
   });
+  hands.onResults(onResults);
+
+  const camera = new Camera(videoElement, {
+    onFrame: async () => {
+      await hands.send({image: videoElement});
+    },
+    width: 1280,
+    height: 720
+  });
+  camera.start();
+
+  // Remove mirroring
+  videoElement.style.transform = 'scaleX(1)';
+
+  // Adjust canvas size dynamically
+  function resizeCanvas() {
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
+  }
+  videoElement.addEventListener('loadedmetadata', resizeCanvas);
 </script>
-
 </body>
 </html>
