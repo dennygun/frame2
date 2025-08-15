@@ -3,8 +3,6 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="screen-orientation" content="portrait" />
-  <meta name="orientation" content="portrait" />
   <title>Minimalist Camera, Hand Draw, 80th Anniversary Indonesia Independence</title>
   <style>
     :root {
@@ -17,61 +15,37 @@
     html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji"; }
     .app { display: grid; place-items: center; min-height: 100%; padding: 16px; }
 
-    /* Force portrait orientation */
-    @media screen and (orientation: landscape) {
-      .app::before {
-        content: "Please rotate your device to portrait mode";
-        position: fixed;
-        inset: 0;
-        background: var(--bg);
-        color: var(--text);
-        display: grid;
-        place-items: center;
-        z-index: 9999;
-        font-size: 18px;
-        text-align: center;
-      }
-      .cam-wrap { display: none; }
-    }
+    .cam-wrap { position: relative; width: min(92vw, 900px); aspect-ratio: 3 / 4; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); background: #000; }
 
-    .cam-wrap { position: relative; width: min(92vw, 400px); aspect-ratio: 3 / 4; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.45); background: #000; }
-
-    video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 
     canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-
-    /* Ensure drawing canvas is on top */
-    #overlay { z-index: 1; }
-    #draw { z-index: 2; }
 
     /* Red and white minimal frame */
     .frame { pointer-events: none; position: absolute; inset: 0; box-shadow:
       0 0 0 10px var(--white) inset,
       0 0 0 22px var(--red) inset;
       border-radius: 20px;
-      z-index: 3;
     }
 
     /* Header ribbon with text */
-    .ribbon { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); color: #b10000; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: clamp(12px, 2.5vw, 18px); letter-spacing: .3px; text-align: center; z-index: 4; }
+    .ribbon { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); color: #b10000; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: clamp(12px, 2.5vw, 18px); letter-spacing: .3px; text-align: center; }
 
-    .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); padding: 10px 12px; border-radius: 999px; backdrop-filter: blur(6px); z-index: 4; }
+    .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); padding: 10px 12px; border-radius: 999px; backdrop-filter: blur(6px); }
 
     .btn { appearance: none; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: var(--text); padding: 8px 12px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 14px; }
     .btn:active { transform: translateY(1px); }
 
-    .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; z-index: 4; }
+    .legend { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; text-align: center; padding: 6px 10px; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
 
-    .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 400px; }
+    .notice { margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; max-width: 900px; }
   </style>
 </head>
 <body>
   <div class="app">
     <div class="cam-wrap" id="cam">
-      <video id="video" playsinline autoplay muted webkit-playsinline></video>
-      <!-- Canvas for per frame rendering and landmarks -->
+      <video id="video" playsinline autoplay muted></video>
       <canvas id="overlay"></canvas>
-      <!-- Persistent drawing canvas -->
       <canvas id="draw"></canvas>
 
       <div class="frame"></div>
@@ -89,7 +63,6 @@
     <div class="notice" id="status">Requesting camera permission, if you see nothing, allow camera access in your browser settings</div>
   </div>
 
-  <!-- MediaPipe Hands, Camera Utils, Drawing Utils from jsDelivr -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -117,7 +90,7 @@
     const dctx = draw.getContext('2d');
     dctx.lineCap = 'round';
     dctx.lineJoin = 'round';
-    dctx.lineWidth = 6;
+    dctx.lineWidth = 5;
     dctx.strokeStyle = '#ffffff';
 
     // Simple line color cycle, red white theme
@@ -153,7 +126,7 @@
 
       // Draw video frame onto overlay so we can export one canvas later
       if (videoEl.videoWidth) {
-        // Mirror control - apply mirroring to canvas drawing, not video element
+        // Mirror control
         octx.save();
         if (isMirrored) {
           octx.translate(overlay.width, 0);
@@ -172,20 +145,20 @@
       // Use the first detected hand
       const landmarks = results.multiHandLandmarks[0];
 
-      // Draw landmarks for debugging - much more subtle now
+      // Optionally draw landmarks for debugging, very light
       octx.save();
-      octx.globalAlpha = .3;
-      octx.lineWidth = 1;
-      octx.strokeStyle = 'rgba(255,255,255,.3)';
-      octx.fillStyle = 'rgba(255,255,255,.2)';
-      // draw connectors very subtly
-      window.drawConnectors(octx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,.2)', lineWidth: 0.5 });
-      window.drawLandmarks(octx, landmarks, { color: 'rgba(255,255,255,.4)', lineWidth: 0.5, radius: 1 });
+      octx.globalAlpha = .6;
+      octx.lineWidth = 2;
+      octx.strokeStyle = 'rgba(255,255,255,.6)';
+      octx.fillStyle = 'rgba(255,255,255,.25)';
+      // draw connectors
+      window.drawConnectors(octx, landmarks, window.HAND_CONNECTIONS, { color: 'rgba(255,255,255,.35)', lineWidth: 1 });
+      window.drawLandmarks(octx, landmarks, { color: 'rgba(255,255,255,.7)', lineWidth: 1, radius: 1.5 });
       octx.restore();
 
       // Pinch to draw
       const { dist, x, y } = pinchInfo(landmarks, overlay.width, overlay.height);
-      const pinchThreshold = Math.max(15, overlay.width * 0.02);
+      const pinchThreshold = Math.max(10, overlay.width * 0.015);
 
       if (dist < pinchThreshold) {
         // start or continue drawing
@@ -195,17 +168,22 @@
           lastPt = pt;
           // change color for each new stroke, alternate red and white
           cycleColor();
-          // Start the path
+        } else {
+          dctx.save();
+          if (isMirrored) {
+            dctx.translate(overlay.width, 0);
+            dctx.scale(-1, 1);
+          }
           dctx.beginPath();
-          dctx.moveTo(pt.x, pt.y);
-        } else if (lastPt) {
-          // Continue drawing with smoother lines
-          dctx.lineTo(pt.x, pt.y);
+          dctx.moveTo(isMirrored ? overlay.width - lastPt.x : lastPt.x, lastPt.y);
+          // simple smoothing toward current point
+          const mx = lastPt.x + (pt.x - lastPt.x) * 0.9;
+          const my = lastPt.y + (pt.y - lastPt.y) * 0.9;
+          dctx.lineTo(isMirrored ? overlay.width - mx : mx, my);
           dctx.stroke();
-          dctx.beginPath();
-          dctx.moveTo(pt.x, pt.y);
+          dctx.restore();
+          lastPt = { x: mx, y: my };
         }
-        lastPt = pt;
       } else {
         drawing = false;
         lastPt = null;
@@ -217,8 +195,8 @@
     hands.setOptions({
       maxNumHands: 1,
       modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
     });
     hands.onResults(onResults);
 
@@ -227,25 +205,8 @@
     async function start() {
       try {
         statusEl.textContent = 'Starting camera, please wait';
-        
-        // Better camera constraints for mobile compatibility
-        const constraints = {
-          video: { 
-            facingMode: 'user',
-            width: { ideal: 480, max: 720 },
-            height: { ideal: 640, max: 960 }
-          }, 
-          audio: false 
-        };
-        
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
         videoEl.srcObject = stream;
-        
-        // Wait for video to be ready
-        await new Promise((resolve) => {
-          videoEl.onloadedmetadata = resolve;
-        });
-        
         await videoEl.play();
         fitCanvases();
 
@@ -253,8 +214,8 @@
           onFrame: async () => {
             await hands.send({image: videoEl});
           },
-          width: 480,
-          height: 640
+          width: 720,
+          height: 960
         });
         camera.start();
         statusEl.textContent = 'Pinch thumb and index to draw, use Clear to erase, use Save for a snapshot';
@@ -271,7 +232,7 @@
 
     mirrorBtn.addEventListener('click', () => {
       isMirrored = !isMirrored;
-      // Don't transform the video element, only change the canvas rendering
+      videoEl.style.transform = isMirrored ? 'scaleX(-1)' : 'none';
       mirrorBtn.textContent = isMirrored ? 'Mirror On' : 'Mirror Off';
     });
 
